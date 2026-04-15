@@ -81,6 +81,7 @@ OTP_TWILIO_FROM_NUMBER=+15557654321
 - Delivery receipt webhooks require `OTP_PUBLIC_BASE_URL` to point at a publicly reachable URL for this service.
 - Cleanup is an explicit maintenance job that expires stale pending challenges and prunes old challenges and audit logs by retention window.
 - SMS failover is configured as a provider chain: primary `OTP_SMS_PROVIDER`, then comma-separated `OTP_SMS_FAILOVER_PROVIDERS`.
+- All committed env files are local-development examples, not production secrets.
 
 ## Production Notes
 

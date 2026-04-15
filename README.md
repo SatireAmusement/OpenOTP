@@ -130,6 +130,8 @@ In the containerized path, Redis is enabled as the rate-limit backend through [.
 If you want Twilio delivery callbacks to work, set `OTP_PUBLIC_BASE_URL` to the externally reachable base URL for this service.
 Provider failover is configured with `OTP_SMS_PROVIDER` as the primary sender and `OTP_SMS_FAILOVER_PROVIDERS` as a comma-separated fallback chain.
 
+All committed env files in this repo are examples for local development, not production secrets.
+
 If you prefer running the app directly on your machine:
 
 ```bash
