@@ -1,11 +1,14 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
 
 from app.api.routes.metrics import router as metrics_router
 from app.api.routes.otp import router as otp_router
 from app.api.routes.webhooks import router as webhooks_router
 from app.core.config import get_settings
+from app.db.session import SessionLocal
 from app.core.logging import configure_logging, get_logger
 from app.observability.middleware import MetricsMiddleware
 from app.services.redis_client import build_redis_client
@@ -66,3 +69,33 @@ app.include_router(metrics_router)
 @app.get("/health")
 def healthcheck() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ready")
+def readiness() -> JSONResponse:
+    checks: dict[str, str] = {}
+    ready = True
+
+    try:
+        with SessionLocal() as db:
+            db.execute(text("SELECT 1"))
+        checks["database"] = "ok"
+    except Exception:
+        checks["database"] = "error"
+        ready = False
+
+    redis_client = getattr(app.state, "redis_client", None)
+    if get_settings().rate_limit_backend == "redis":
+        try:
+            if redis_client is None:
+                raise RuntimeError("Redis client is not configured.")
+            redis_client.ping()
+            checks["redis"] = "ok"
+        except Exception:
+            checks["redis"] = "error"
+            ready = False
+    else:
+        checks["redis"] = "not_configured"
+
+    status_code = status.HTTP_200_OK if ready else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(status_code=status_code, content={"status": "ok" if ready else "error", "checks": checks})
