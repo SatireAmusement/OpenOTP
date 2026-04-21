@@ -308,7 +308,11 @@ class OTPService:
 
     def _normalize_phone_number(self, phone_number: str) -> str:
         try:
-            return normalize_phone_number(phone_number, default_region=self.settings.phone_default_region)
+            return normalize_phone_number(
+                phone_number,
+                default_region=self.settings.phone_default_region,
+                allowed_countries=self.settings.allowed_country_set,
+            )
         except InvalidPhoneNumberError as exc:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 

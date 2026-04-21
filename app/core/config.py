@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     metrics_enabled: bool = True
     metrics_bearer_token: str | None = None
     phone_default_region: str = "US"
+    allowed_countries: str = ""
     challenge_retention_days: int = Field(default=30, ge=1, le=3650)
     audit_log_retention_days: int = Field(default=90, ge=1, le=3650)
 
@@ -49,6 +50,10 @@ class Settings(BaseSettings):
     @property
     def trusted_proxy_ip_set(self) -> set[str]:
         return {item.strip() for item in self.trusted_proxy_ips.split(",") if item.strip()}
+
+    @property
+    def allowed_country_set(self) -> set[str]:
+        return {item.strip().upper() for item in self.allowed_countries.split(",") if item.strip()}
 
     @model_validator(mode="after")
     def validate_production_settings(self) -> "Settings":
