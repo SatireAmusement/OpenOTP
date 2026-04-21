@@ -16,12 +16,28 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
           python -m venv .venv
+          .venv/bin/pip install --upgrade pip setuptools wheel
           .venv/bin/pip install -e '.[dev]'
+          .venv/bin/pip install bandit pip-audit
 
       - name: Run tests
         run: .venv/bin/pytest -q
+
+      - name: Run Bandit
+        run: .venv/bin/bandit -r app -ll
+
+      - name: Run pip-audit
+        run: .venv/bin/pip-audit
+
+      - name: Validate Compose files
+        run: |
+          docker compose config >/tmp/openotp-compose.yml
+          OPENOTP_ENV_FILE=.env.production.example docker compose -f docker-compose.prod.yml --env-file .env.production.example config >/tmp/openotp-compose-prod.yml
+
+      - name: Check shell scripts
+        run: bash -n scripts/init-env.sh
