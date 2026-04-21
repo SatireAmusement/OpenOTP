@@ -9,14 +9,14 @@ OpenOTP is currently an MVP. Contributions that improve correctness, security po
 ```bash
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-cp .env.example .env
+cp examples/env/.env.example .env
 ```
 
 Container-first setup:
 
 ```bash
-cp .env.example .env
-docker compose up --build
+cp examples/env/.env.example .env
+docker compose -f deploy/compose/docker-compose.yml up --build
 ```
 
 ## Before Opening a PR

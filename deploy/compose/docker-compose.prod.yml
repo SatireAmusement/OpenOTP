@@ -11,13 +11,13 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
 
   api:
     build:
-      context: .
+      context: ../..
     container_name: openotp-api
     restart: unless-stopped
     depends_on:
@@ -26,7 +26,7 @@ services:
       redis:
         condition: service_healthy
     env_file:
-      - ${OPENOTP_ENV_FILE:-.env.production}
+      - ${OPENOTP_ENV_FILE:-../../.env.production}
     expose:
       - "8000"
 

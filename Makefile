@@ -17,8 +17,8 @@ cleanup:
 	.venv/bin/python -m app.cli.cleanup
 
 compose-up:
-	cp -n .env.example .env || true
-	docker compose up --build
+	cp -n examples/env/.env.example .env || true
+	docker compose -f deploy/compose/docker-compose.yml up --build
 
 compose-down:
-	docker compose down
+	docker compose -f deploy/compose/docker-compose.yml down

@@ -27,6 +27,7 @@ The SMS provider only delivers the message.
 - [Security Model](#security-model)
 - [Operations](#operations)
 - [Development](#development)
+- [Project Layout](#project-layout)
 - [Documentation](#documentation)
 - [Contributing](#contributing)
 
@@ -85,8 +86,8 @@ Before high-volume or high-risk production use, add your organization’s abuse 
 Run the local stack:
 
 ```bash
-cp .env.example .env
-docker compose up --build
+cp examples/env/.env.example .env
+docker compose -f deploy/compose/docker-compose.yml up --build
 ```
 
 Open the docs UI:
@@ -114,7 +115,7 @@ The local stack uses:
 Stop it:
 
 ```bash
-docker compose down
+docker compose -f deploy/compose/docker-compose.yml down
 ```
 
 ## Production Deploy
@@ -141,7 +142,7 @@ OTP_TWILIO_FROM_NUMBER=+15557654321
 Start the production stack:
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 
 Production includes:
@@ -281,7 +282,7 @@ Upgrade:
 
 ```bash
 git pull
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 
 ## Development
@@ -310,7 +311,7 @@ Run security checks:
 Run with local containers:
 
 ```bash
-docker compose up -d postgres redis
+docker compose -f deploy/compose/docker-compose.yml up -d postgres redis
 .venv/bin/alembic upgrade head
 .venv/bin/uvicorn app.main:app --reload
 ```
@@ -328,8 +329,14 @@ app/
   services/       OTP logic, rate limiting, SMS, cleanup, webhooks
   utils/          phone normalization helpers
 alembic/          database migrations
-docker/           container entrypoint and Caddy config
-docs/             architecture, API, deployment, operations, security
+deploy/
+  caddy/          production reverse proxy config
+  compose/        local and production Docker Compose files
+docker/           container entrypoint
+docs/             architecture, API, deployment, operations, and security
+examples/
+  env/            local, Docker, Postgres, and production env templates
+scripts/          maintenance and setup helpers
 tests/            pytest coverage
 ```
 

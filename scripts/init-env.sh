@@ -87,7 +87,7 @@ Wrote $env_file
 Next steps:
 1. Review Twilio settings in .env.production.
 2. Point DNS for $domain at this host.
-3. Run: docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+3. Run: docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.production up -d --build
 
 Save this API key for clients:
 $api_key

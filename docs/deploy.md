@@ -39,7 +39,7 @@ OTP_TWILIO_FROM_NUMBER=+15557654321
 ## Start
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 
 Caddy will request and renew TLS certificates automatically for `OPENOTP_DOMAIN`.
@@ -91,7 +91,7 @@ cat openotp-YYYY-MM-DD.sql | docker exec -i openotp-postgres psql -U openotp ope
 
 ```bash
 git pull
-docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 
 The API container runs Alembic migrations on startup.
@@ -99,7 +99,7 @@ The API container runs Alembic migrations on startup.
 ## Stop
 
 ```bash
-docker compose -f docker-compose.prod.yml --env-file .env.production down
+docker compose -f deploy/compose/docker-compose.prod.yml --env-file .env.production down
 ```
 
 Do not use `-v` unless you intentionally want to delete the database and Redis volumes.

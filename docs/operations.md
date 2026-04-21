@@ -3,14 +3,14 @@
 ## Run Locally
 
 ```bash
-cp .env.example .env
-docker compose up --build
+cp examples/env/.env.example .env
+docker compose -f deploy/compose/docker-compose.yml up --build
 ```
 
 Stop the stack with:
 
 ```bash
-docker compose down
+docker compose -f deploy/compose/docker-compose.yml down
 ```
 
 Scrape metrics locally at:
@@ -22,10 +22,10 @@ http://127.0.0.1:8000/metrics
 If you want the app on the host but Postgres in Docker:
 
 ```bash
-docker compose up -d postgres
+docker compose -f deploy/compose/docker-compose.yml up -d postgres
 python3 -m venv .venv
 .venv/bin/pip install -e '.[dev]'
-cp .env.example .env
+cp examples/env/.env.example .env
 .venv/bin/alembic upgrade head
 .venv/bin/uvicorn app.main:app --reload
 ```
@@ -82,7 +82,7 @@ OTP_TWILIO_FROM_NUMBER=+15557654321
 - Rate limiting is enforced per phone number and, when available, per IP address.
 - `X-Forwarded-For` is only trusted when the direct peer IP appears in `OTP_TRUSTED_PROXY_IPS`.
 - Resends reuse the active challenge and rotate the underlying OTP code.
-- `docker-compose.yml` provisions the API, Postgres, and Redis so the default container path matches the intended production architecture more closely.
+- `deploy/compose/docker-compose.yml` provisions the API, Postgres, and Redis so the default container path matches the intended production architecture more closely.
 - Delivery receipt webhooks require `OTP_PUBLIC_BASE_URL` to point at a publicly reachable URL for this service.
 - Cleanup is an explicit maintenance job that expires stale pending challenges and prunes old challenges and audit logs by retention window.
 - SMS failover is configured as a provider chain: primary `OTP_SMS_PROVIDER`, then comma-separated `OTP_SMS_FAILOVER_PROVIDERS`.

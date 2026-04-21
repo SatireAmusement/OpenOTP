@@ -36,8 +36,8 @@ jobs:
 
       - name: Validate Compose files
         run: |
-          docker compose config >/tmp/openotp-compose.yml
-          OPENOTP_ENV_FILE=.env.production.example docker compose -f docker-compose.prod.yml --env-file .env.production.example config >/tmp/openotp-compose-prod.yml
+          docker compose -f deploy/compose/docker-compose.yml config >/tmp/openotp-compose.yml
+          OPENOTP_ENV_FILE=../../examples/env/.env.production.example docker compose -f deploy/compose/docker-compose.prod.yml --env-file examples/env/.env.production.example config >/tmp/openotp-compose-prod.yml
 
       - name: Check shell scripts
         run: bash -n scripts/init-env.sh
