@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Header, Request
 from urllib.parse import parse_qsl
 
+from app.api.client_ip import is_trusted_proxy
 from app.core.config import get_settings
 from app.api.deps import get_webhook_service
 from app.schemas.webhook import WebhookResponse
@@ -12,7 +13,7 @@ router = APIRouter(prefix="/v1/webhooks/sms", tags=["webhooks"])
 def _external_url(request: Request, x_forwarded_proto: str | None, x_forwarded_host: str | None) -> str:
     settings = get_settings()
     peer_ip = request.client.host if request.client else None
-    trust_forwarded = bool(peer_ip and peer_ip in settings.trusted_proxy_ip_set)
+    trust_forwarded = is_trusted_proxy(peer_ip)
     scheme = x_forwarded_proto if trust_forwarded and x_forwarded_proto else request.url.scheme
     host = x_forwarded_host if trust_forwarded and x_forwarded_host else request.headers.get("host") or request.url.netloc
     return f"{scheme}://{host}{request.url.path}"

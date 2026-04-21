@@ -320,5 +320,8 @@ def test_forwarded_for_only_used_from_trusted_proxy(client: tuple[TestClient, Re
 
         settings.trusted_proxy_ips = "10.0.0.1"
         assert client_ip_from_request(request, "203.0.113.10") == "203.0.113.10"
+
+        settings.trusted_proxy_ips = "10.0.0.0/24"
+        assert client_ip_from_request(request, "203.0.113.11") == "203.0.113.11"
     finally:
         settings.trusted_proxy_ips = original
