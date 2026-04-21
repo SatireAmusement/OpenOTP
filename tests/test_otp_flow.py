@@ -196,6 +196,27 @@ def test_database_rate_limiter_uses_persisted_rate_limit_hits(tmp_path) -> None:
         assert limiter.hit("send_otp:phone:+14155552671:purpose:login", limit=1, window_seconds=3600) is False
 
 
+def test_database_rate_limit_persists_phone_and_ip_scopes(client: tuple[TestClient, RecordingSMSProvider]) -> None:
+    test_client, _provider = client
+    response = test_client.post(
+        "/v1/otp/send",
+        json={"phone_number": "+14155552671", "purpose": "login"},
+        headers={"X-Forwarded-For": "203.0.113.10"},
+    )
+    assert response.status_code == 202
+
+    from app.api import deps
+
+    db_generator = app.dependency_overrides[deps.get_db_session]()
+    db = next(db_generator)
+    try:
+        details = {row.details for row in db.query(AuditLog).filter(AuditLog.event_type == "rate_limit_hit").all()}
+        assert '"send_otp:phone:+14155552671:purpose:login"' in details
+        assert '"send_otp:ip:testclient:purpose:login"' in details
+    finally:
+        db.close()
+
+
 def test_cleanup_service_expires_and_purges_old_records(tmp_path) -> None:
     db_path = tmp_path / "cleanup.db"
     engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})

@@ -19,6 +19,7 @@ from app.services.sms.base import SMSProvider
 from app.utils.phone import InvalidPhoneNumberError, normalize_phone_number
 
 logger = get_logger(__name__)
+INVALID_OTP_DETAIL = "Invalid verification code."
 
 
 class OTPService:
@@ -58,7 +59,7 @@ class OTPService:
                     user_agent=user_agent,
                     details={"reason": "cooldown_active"},
                 )
-                otp_send_total.labels(outcome="blocked", provider="n/a", purpose=payload.purpose).inc()
+                otp_send_total.labels(outcome="blocked", provider="n/a", purpose=self._metric_purpose(payload.purpose)).inc()
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail="Resend cooldown is still active.",
@@ -78,7 +79,11 @@ class OTPService:
                     user_agent=user_agent,
                     details={"reason": "resend_limit_reached"},
                 )
-                otp_send_total.labels(outcome="blocked", provider=challenge.delivery_provider or "n/a", purpose=payload.purpose).inc()
+                otp_send_total.labels(
+                    outcome="blocked",
+                    provider=challenge.delivery_provider or "n/a",
+                    purpose=self._metric_purpose(payload.purpose),
+                ).inc()
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail="Resend limit reached for the current OTP challenge.",
@@ -125,7 +130,7 @@ class OTPService:
             user_agent=user_agent,
             details={"provider": delivery.provider_name},
         )
-        otp_send_total.labels(outcome="accepted", provider=delivery.provider_name, purpose=payload.purpose).inc()
+        otp_send_total.labels(outcome="accepted", provider=delivery.provider_name, purpose=self._metric_purpose(payload.purpose)).inc()
         logger.info("otp_sent", extra={"challenge_id": challenge.id, "phone_number": phone_number, "purpose": payload.purpose})
         return OTPResponse(
             success=True,
@@ -160,13 +165,13 @@ class OTPService:
                 user_agent=user_agent,
                 details={"reason": "challenge_missing"},
             )
-            otp_verify_total.labels(outcome="rejected", purpose=payload.purpose).inc()
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No OTP challenge found.")
+            otp_verify_total.labels(outcome="rejected", purpose=self._metric_purpose(payload.purpose)).inc()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_OTP_DETAIL)
 
         if challenge.status == OTPStatus.verified:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="OTP already verified.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_OTP_DETAIL)
         if challenge.status == OTPStatus.blocked:
-            raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="OTP challenge is blocked.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_OTP_DETAIL)
         if challenge.expires_at <= now:
             challenge.status = OTPStatus.expired
             self.db.add(challenge)
@@ -181,14 +186,14 @@ class OTPService:
                 user_agent=user_agent,
                 details={"reason": "expired"},
             )
-            otp_verify_total.labels(outcome="rejected", purpose=payload.purpose).inc()
-            raise HTTPException(status_code=status.HTTP_410_GONE, detail="OTP challenge has expired.")
+            otp_verify_total.labels(outcome="rejected", purpose=self._metric_purpose(payload.purpose)).inc()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_OTP_DETAIL)
 
         if challenge.attempt_count >= challenge.max_attempts:
             challenge.status = OTPStatus.blocked
             self.db.add(challenge)
             self.db.commit()
-            raise HTTPException(status_code=status.HTTP_423_LOCKED, detail="Maximum verification attempts exceeded.")
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_OTP_DETAIL)
 
         candidate_hash = self._hash_otp(code=payload.code, salt=challenge.otp_salt)
         if not hmac.compare_digest(candidate_hash, challenge.otp_hash):
@@ -207,8 +212,8 @@ class OTPService:
                 user_agent=user_agent,
                 details={"reason": "code_mismatch", "attempt_count": challenge.attempt_count},
             )
-            otp_verify_total.labels(outcome="rejected", purpose=payload.purpose).inc()
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid verification code.")
+            otp_verify_total.labels(outcome="rejected", purpose=self._metric_purpose(payload.purpose)).inc()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_OTP_DETAIL)
 
         challenge.status = OTPStatus.verified
         challenge.verified_at = now
@@ -225,7 +230,7 @@ class OTPService:
             user_agent=user_agent,
             details={"provider": challenge.delivery_provider},
         )
-        otp_verify_total.labels(outcome="accepted", purpose=payload.purpose).inc()
+        otp_verify_total.labels(outcome="accepted", purpose=self._metric_purpose(payload.purpose)).inc()
         logger.info("otp_verified", extra={"challenge_id": challenge.id, "phone_number": phone_number, "purpose": payload.purpose})
         return OTPResponse(success=True, message="OTP verified successfully.", challenge_id=challenge.id)
 
@@ -262,12 +267,15 @@ class OTPService:
         ip_address: str | None,
         error_detail: str,
     ) -> None:
-        phone_scope = f"{event_type}:phone:{phone_number}:purpose:{purpose}"
-        phone_allowed = self.rate_limiter.hit(phone_scope, limit, window_seconds)
+        scopes = [f"{event_type}:phone:{phone_number}:purpose:{purpose}"]
         ip_allowed = True
         if ip_address:
-            ip_scope = f"{event_type}:ip:{ip_address}:purpose:{purpose}"
-            ip_allowed = self.rate_limiter.hit(ip_scope, limit, window_seconds)
+            scopes.append(f"{event_type}:ip:{ip_address}:purpose:{purpose}")
+
+        allowed = [self.rate_limiter.hit(scope, limit, window_seconds) for scope in scopes]
+        phone_allowed = allowed[0]
+        if len(allowed) > 1:
+            ip_allowed = allowed[1]
 
         if not phone_allowed or not ip_allowed:
             self._log_event(
@@ -282,16 +290,17 @@ class OTPService:
             )
             raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=error_detail)
 
-        self._log_event(
-            event_type="rate_limit_hit",
-            outcome="accepted",
-            phone_number=phone_number,
-            purpose=purpose,
-            challenge_id=None,
-            ip_address=ip_address,
-            user_agent=None,
-            details=phone_scope,
-        )
+        for scope in scopes:
+            self._log_event(
+                event_type="rate_limit_hit",
+                outcome="accepted",
+                phone_number=phone_number,
+                purpose=purpose,
+                challenge_id=None,
+                ip_address=ip_address,
+                user_agent=None,
+                details=scope,
+            )
 
     def _generate_otp(self) -> str:
         digits = "0123456789"
@@ -316,6 +325,11 @@ class OTPService:
             return None
         base_url = self.settings.public_base_url.rstrip("/")
         return f"{base_url}/v1/webhooks/sms/{{provider}}/status"
+
+    @staticmethod
+    def _metric_purpose(purpose: str) -> str:
+        known = {"login", "signup", "password_reset", "transaction"}
+        return purpose if purpose in known else "other"
 
     def _log_event(
         self,

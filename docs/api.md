@@ -65,10 +65,7 @@ Response:
 Behavior:
 
 - Returns `200` on success.
-- Returns `400` for a wrong code.
-- Returns `404` if no challenge exists.
-- Returns `410` if the challenge expired.
-- Returns `423` if the challenge is blocked or already exhausted.
+- Returns `400` for invalid, missing, expired, blocked, or already-used OTP challenges.
 - Returns `429` if verify attempts exceed the configured rate window.
 
 ## `POST /v1/webhooks/sms/{provider}/status`
