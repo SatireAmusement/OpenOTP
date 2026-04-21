@@ -1,47 +1,115 @@
 # OpenOTP
 
-OpenOTP is a self-hosted SMS OTP backend for teams that want to own OTP generation, storage, expiry, verification, rate limiting, audit logs, and SMS provider choice.
+[![Python](https://img.shields.io/badge/python-3.11%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-0.115%2B-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![Postgres](https://img.shields.io/badge/Postgres-ready-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-rate%20limits-DC382D?logo=redis&logoColor=white)](https://redis.io/)
+[![Docker](https://img.shields.io/badge/Docker-compose-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-It treats Twilio or any other SMS vendor as a delivery pipe, not as the owner of your verification state.
+OpenOTP is a self-hosted SMS OTP backend for teams that want to own verification state instead of outsourcing it to an SMS vendor.
 
-## Why Use It
+It generates OTPs in your app, stores only salted and peppered hashes, enforces expiry and rate limits, records audit logs, and treats Twilio as a delivery channel rather than the source of truth.
 
-- Application-owned OTP lifecycle.
-- OTPs are stored only as salted, peppered PBKDF2-HMAC-SHA256 hashes.
-- Expiry, resend cooldowns, max attempts, and rate limits are enforced by the service.
-- Redis-backed rate limiting for container deployments, with a database fallback.
-- Twilio SMS delivery with provider abstraction and failover support.
-- Delivery status webhooks with provider signature validation.
-- Audit logs, cleanup jobs, health checks, readiness checks, and Prometheus metrics.
-- Docker Compose paths for local development and single-host production.
+```text
+Your app owns the verification logic.
+The SMS provider only delivers the message.
+```
+
+## Contents
+
+- [Why OpenOTP](#why-openotp)
+- [How It Works](#how-it-works)
+- [Quick Start](#quick-start)
+- [Production Deploy](#production-deploy)
+- [API Examples](#api-examples)
+- [Configuration](#configuration)
+- [Security Model](#security-model)
+- [Operations](#operations)
+- [Development](#development)
+- [Documentation](#documentation)
+- [Contributing](#contributing)
+
+## Why OpenOTP
+
+OpenOTP is useful when you want:
+
+- Control over OTP generation, hashing, expiry, attempts, lockouts, and audit logs.
+- A small service you can read, deploy, and reason about.
+- Redis-backed rate limiting with a database fallback.
+- Twilio delivery without Twilio owning your OTP lifecycle.
+- Docker Compose for local development and single-host production.
+- Prometheus metrics, health checks, readiness checks, migrations, and cleanup jobs.
+- Production guardrails that fail closed when unsafe defaults are used.
+
+It is not trying to be a full identity platform. It is a focused OTP service you can put behind your own product, auth layer, or internal tooling.
+
+## How It Works
+
+```mermaid
+flowchart LR
+    A[Client app] -->|POST /v1/otp/send| B[OpenOTP API]
+    B --> C[Rate limits]
+    B --> D[Generate OTP]
+    D --> E[Hash with salt + pepper]
+    E --> F[(Postgres)]
+    B --> G[SMS provider]
+    G --> H[User phone]
+    H --> I[User enters code]
+    I -->|POST /v1/otp/verify| B
+    B --> J[Constant-time hash check]
+    J --> K[Verified or rejected]
+    G -->|Delivery webhook| L[Webhook endpoint]
+    L --> F
+```
+
+OpenOTP stores:
+
+- normalized phone number
+- purpose
+- OTP hash and salt
+- status, expiry, attempt count, resend count
+- delivery provider reference
+- audit events
+
+OpenOTP does not store plaintext OTP codes.
 
 ## Status
 
-OpenOTP is a production-minded MVP and reference implementation. It is suitable for demos, internal tools, architecture review, and as a starting point for a real service.
+OpenOTP is a production-minded MVP and reference implementation. It is suitable for local demos, internal tools, technical interviews, architecture review, and as a foundation for a real service.
 
 Before high-volume or high-risk production use, add your organization’s abuse controls, alerting, backup policy, and deployment review process.
 
 ## Quick Start
 
-Run the full local stack:
+Run the local stack:
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-Open:
+Open the docs UI:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-The default local stack uses:
+Check the service:
 
-- API on `127.0.0.1:8000`
-- Postgres on `127.0.0.1:5432`
-- Redis on `127.0.0.1:6379`
-- console SMS provider for local development
+```bash
+curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/ready
+```
+
+The local stack uses:
+
+| Service | Address |
+| --- | --- |
+| API | `127.0.0.1:8000` |
+| Postgres | `127.0.0.1:5432` |
+| Redis | `127.0.0.1:6379` |
+| SMS provider | `console` |
 
 Stop it:
 
@@ -51,13 +119,15 @@ docker compose down
 
 ## Production Deploy
 
-Generate a production environment file:
+Generate a production env file:
 
 ```bash
 ./scripts/init-env.sh
 ```
 
-Review `.env.production`, especially:
+The script creates `.env.production`, generates secrets, and prints the API key your client apps should use.
+
+Review:
 
 ```env
 OPENOTP_DOMAIN=otp.example.com
@@ -74,11 +144,19 @@ Start the production stack:
 docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
 ```
 
-The production stack includes Caddy for HTTPS, API, Postgres, and Redis. See [docs/deploy.md](docs/deploy.md) for backups, health checks, upgrades, and metrics.
+Production includes:
 
-## API
+- Caddy with automatic HTTPS
+- OpenOTP API
+- Postgres
+- Redis
+- persistent Docker volumes
 
-If `OTP_API_KEY` is set, include it on OTP API requests:
+See [docs/deploy.md](docs/deploy.md) for backups, health checks, upgrades, and metrics.
+
+## API Examples
+
+If `OTP_API_KEY` is configured, include it:
 
 ```text
 X-OpenOTP-API-Key: <your-api-key>
@@ -92,8 +170,6 @@ curl -X POST http://127.0.0.1:8000/v1/otp/send \
   -H "X-OpenOTP-API-Key: $OTP_API_KEY" \
   -d '{"phone_number":"+14155552671","purpose":"login"}'
 ```
-
-Response:
 
 ```json
 {
@@ -113,8 +189,6 @@ curl -X POST http://127.0.0.1:8000/v1/otp/verify \
   -d '{"phone_number":"+14155552671","purpose":"login","code":"123456"}'
 ```
 
-Response:
-
 ```json
 {
   "success": true,
@@ -130,13 +204,11 @@ Invalid, missing, expired, blocked, and already-used OTP challenges all return a
 
 All application settings use the `OTP_` prefix.
 
-Important settings:
-
 | Variable | Purpose |
 | --- | --- |
 | `OTP_APP_ENV` | Use `production` to enable production startup checks. |
 | `OTP_API_KEY` | Optional in development, required in production. |
-| `OTP_OTP_PEPPER` | Secret pepper used when hashing OTPs. Required to be changed in production. |
+| `OTP_OTP_PEPPER` | Secret pepper used when hashing OTPs. Must be changed in production. |
 | `OTP_SMS_PROVIDER` | `console` for local development, `twilio` for real SMS. |
 | `OTP_PUBLIC_BASE_URL` | Public HTTPS base URL used for SMS status callbacks. |
 | `OTP_REDIS_URL` | Enables Redis-backed rate limiting when configured. |
@@ -145,20 +217,30 @@ Important settings:
 | `OTP_TRUSTED_PROXY_IPS` | Comma-separated trusted proxy IPs or CIDRs for forwarded headers. |
 | `OTP_METRICS_BEARER_TOKEN` | Protects `/metrics` with bearer auth when set. |
 
-Production startup rejects unsafe defaults, including the default OTP pepper, console SMS provider, missing API key, non-HTTPS public URL, and unauthenticated metrics when metrics are enabled.
+Production startup rejects:
+
+- default OTP pepper
+- console SMS provider
+- missing API key
+- non-HTTPS public base URL
+- unauthenticated metrics when metrics are enabled
 
 ## Security Model
 
-OpenOTP follows these core rules:
+OpenOTP follows these rules:
 
-- Generate OTPs with Python `secrets`.
-- Never store OTPs in plaintext.
-- Hash OTPs with per-code salt and application pepper.
-- Compare OTP hashes with constant-time comparison.
-- Enforce expiration, attempt limits, resend limits, and rate limits server-side.
-- Do not leak precise OTP challenge state in public verification responses.
-- Trust forwarded headers only from configured proxy IPs or CIDRs.
-- Keep metrics private or bearer-protected.
+| Control | Behavior |
+| --- | --- |
+| OTP generation | Uses Python `secrets`. |
+| OTP storage | Stores salted, peppered hashes only. |
+| Verification | Uses constant-time comparison. |
+| Expiry | Server-enforced TTL. |
+| Attempts | Server-enforced max verification attempts. |
+| Resends | Cooldown and max resend policy. |
+| Rate limits | Per phone and per client IP. |
+| Forwarded headers | Trusted only from configured proxy IPs or CIDRs. |
+| Metrics | Private or bearer-protected. |
+| Errors | Verification failures avoid precise state leakage. |
 
 SMS OTP is useful, but it is not phishing-resistant. For high-assurance authentication, pair OpenOTP with stronger factors and account-risk controls.
 
@@ -172,6 +254,35 @@ SMS OTP is useful, but it is not phishing-resistant. For high-assurance authenti
 | `GET` | `/health` | Process liveness. |
 | `GET` | `/ready` | Database and Redis readiness. |
 | `GET` | `/metrics` | Prometheus metrics. |
+
+## Operations
+
+Health:
+
+```bash
+curl https://otp.example.com/health
+curl https://otp.example.com/ready
+```
+
+Metrics:
+
+```bash
+curl https://otp.example.com/metrics \
+  -H "Authorization: Bearer $OTP_METRICS_BEARER_TOKEN"
+```
+
+Backup:
+
+```bash
+docker exec openotp-postgres pg_dump -U openotp openotp > openotp-$(date +%F).sql
+```
+
+Upgrade:
+
+```bash
+git pull
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+```
 
 ## Development
 
@@ -196,7 +307,7 @@ Run security checks:
 .venv/bin/pip-audit
 ```
 
-Run with a local Postgres container:
+Run with local containers:
 
 ```bash
 docker compose up -d postgres redis
