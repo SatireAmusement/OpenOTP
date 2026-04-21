@@ -14,6 +14,8 @@
 - Replace the default `OTP_OTP_PEPPER`.
 - Add schema migrations and operational backup strategy.
 - Put the API behind TLS and a trusted proxy.
+- Configure `OTP_TRUSTED_PROXY_IPS` before honoring forwarded client IP headers.
+- Keep `/metrics` private, or set `OTP_METRICS_BEARER_TOKEN`.
 - Add cleanup for old challenges and logs.
 - Emit logs to a centralized sink and redact sensitive fields.
 - Consider provider failover if SMS delivery is business-critical.

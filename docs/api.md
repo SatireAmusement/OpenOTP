@@ -2,6 +2,12 @@
 
 ## `POST /v1/otp/send`
 
+If `OTP_API_KEY` is configured, include:
+
+```text
+X-OpenOTP-API-Key: <key>
+```
+
 Request:
 
 ```json
@@ -28,6 +34,12 @@ Behavior:
 - Returns `429` if the send rate limit or resend cooldown/policy is violated.
 
 ## `POST /v1/otp/verify`
+
+If `OTP_API_KEY` is configured, include:
+
+```text
+X-OpenOTP-API-Key: <key>
+```
 
 Request:
 
@@ -76,6 +88,7 @@ Current implementation:
 Purpose:
 
 - Exposes Prometheus-style application metrics.
+- If `OTP_METRICS_BEARER_TOKEN` is set, callers must provide `Authorization: Bearer <token>`.
 
 Examples:
 

@@ -1,6 +1,9 @@
-from fastapi import Depends, Request
+import hmac
+
+from fastapi import Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.db.session import get_db_session
 from app.services.otp_service import OTPService
 from app.services.rate_limit import DatabaseRateLimiter, RateLimiter, RedisRateLimiter
@@ -10,6 +13,12 @@ from app.services.webhook_service import WebhookService
 
 def get_sms_provider(request: Request) -> SMSProvider:
     return request.app.state.sms_provider
+
+
+def require_api_key(x_openotp_api_key: str | None = Header(default=None)) -> None:
+    expected = get_settings().api_key
+    if expected and not hmac.compare_digest(x_openotp_api_key or "", expected):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unauthorized.")
 
 
 def get_sms_provider_registry(request: Request) -> dict[str, SMSProvider]:

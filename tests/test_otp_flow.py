@@ -1,5 +1,6 @@
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,6 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.api.deps import get_sms_provider
+from app.api.client_ip import client_ip_from_request
+from app.core.config import get_settings
 from app.db.base import Base
 from app.main import app
 from app.models.otp import AuditLog, OTPChallenge, OTPStatus
@@ -118,6 +121,25 @@ def test_invalid_code_is_rejected(client: tuple[TestClient, RecordingSMSProvider
         json={"phone_number": "+14155552671", "purpose": "login", "code": "000000"},
     )
     assert verify_response.status_code == 400
+    assert verify_response.json()["detail"] == "Invalid verification code."
+
+
+def test_api_key_is_required_when_configured(client: tuple[TestClient, RecordingSMSProvider]) -> None:
+    test_client, _provider = client
+    settings = get_settings()
+    original = settings.api_key
+    settings.api_key = "secret-api-key"
+    try:
+        denied = test_client.post("/v1/otp/send", json={"phone_number": "+14155552671", "purpose": "login"})
+        accepted = test_client.post(
+            "/v1/otp/send",
+            json={"phone_number": "+14155552671", "purpose": "login"},
+            headers={"X-OpenOTP-API-Key": "secret-api-key"},
+        )
+        assert denied.status_code == 401
+        assert accepted.status_code == 202
+    finally:
+        settings.api_key = original
 
 
 def test_invalid_phone_number_is_rejected(client: tuple[TestClient, RecordingSMSProvider]) -> None:
@@ -253,3 +275,29 @@ def test_metrics_endpoint_exposes_prometheus_metrics(client: tuple[TestClient, R
     assert response.status_code == 200
     assert "openotp_http_requests_total" in response.text
     assert "openotp_otp_send_total" in response.text
+
+
+def test_metrics_endpoint_requires_token_when_configured(client: tuple[TestClient, RecordingSMSProvider]) -> None:
+    test_client, _provider = client
+    settings = get_settings()
+    original = settings.metrics_bearer_token
+    settings.metrics_bearer_token = "test-token"
+    try:
+        assert test_client.get("/metrics").status_code == 401
+        assert test_client.get("/metrics", headers={"Authorization": "Bearer test-token"}).status_code == 200
+    finally:
+        settings.metrics_bearer_token = original
+
+
+def test_forwarded_for_only_used_from_trusted_proxy(client: tuple[TestClient, RecordingSMSProvider]) -> None:
+    test_client, _provider = client
+    settings = get_settings()
+    original = settings.trusted_proxy_ips
+    try:
+        request = SimpleNamespace(client=SimpleNamespace(host="10.0.0.1"))
+        assert client_ip_from_request(request, "203.0.113.10") == "10.0.0.1"
+
+        settings.trusted_proxy_ips = "10.0.0.1"
+        assert client_ip_from_request(request, "203.0.113.10") == "203.0.113.10"
+    finally:
+        settings.trusted_proxy_ips = original

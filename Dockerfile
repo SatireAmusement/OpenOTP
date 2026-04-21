@@ -13,7 +13,11 @@ COPY alembic ./alembic
 RUN pip install --no-cache-dir .
 
 COPY docker/entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh \
+    && adduser --disabled-password --gecos "" --uid 10001 openotp \
+    && chown -R openotp:openotp /app
+
+USER openotp
 
 EXPOSE 8000
 

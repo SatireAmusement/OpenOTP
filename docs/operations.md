@@ -43,9 +43,13 @@ All settings use the `OTP_` prefix.
 ```env
 OTP_DATABASE_URL=postgresql+psycopg://openotp:openotp@localhost:5432/openotp
 OTP_PUBLIC_BASE_URL=
+OTP_API_KEY=
 OTP_REDIS_URL=
 OTP_RATE_LIMIT_BACKEND=database
 OTP_RATE_LIMIT_KEY_PREFIX=openotp:ratelimit
+OTP_TRUSTED_PROXY_IPS=
+OTP_METRICS_ENABLED=true
+OTP_METRICS_BEARER_TOKEN=
 OTP_PHONE_DEFAULT_REGION=US
 OTP_CHALLENGE_RETENTION_DAYS=30
 OTP_AUDIT_LOG_RETENTION_DAYS=90
@@ -76,6 +80,7 @@ OTP_TWILIO_FROM_NUMBER=+15557654321
 - The containerized stack enables Redis-backed rate limiting by default.
 - The console provider logs SMS contents for local development only.
 - Rate limiting is enforced per phone number and, when available, per IP address.
+- `X-Forwarded-For` is only trusted when the direct peer IP appears in `OTP_TRUSTED_PROXY_IPS`.
 - Resends reuse the active challenge and rotate the underlying OTP code.
 - `docker-compose.yml` provisions the API, Postgres, and Redis so the default container path matches the intended production architecture more closely.
 - Delivery receipt webhooks require `OTP_PUBLIC_BASE_URL` to point at a publicly reachable URL for this service.
@@ -88,3 +93,5 @@ OTP_TWILIO_FROM_NUMBER=+15557654321
 - Do not use the console provider outside local development.
 - Rotate the OTP pepper through a proper secrets manager.
 - Put the service behind TLS and a trusted reverse proxy.
+- In production, startup rejects the default OTP pepper, the console SMS provider, non-HTTPS public base URLs, and unauthenticated metrics when metrics are enabled.
+- In production, `OTP_API_KEY` is required. Clients must send it as `X-OpenOTP-API-Key`.
